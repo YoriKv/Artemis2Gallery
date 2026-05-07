@@ -49,10 +49,12 @@ Open directly in a browser — no web server needed; `photos.js` loads via a
 
 ## Photos and thumbnails (download separately)
 
-Download as ZIP, extract into the same folder as gallery.html - https://file.kiwi/086c80d6#wDLd0yM4tVLGpu-vjik23Q
+Download the ZIP, extract it into the same folder as gallery.html, and the tool will work immediately as the output of build_manifest on this photo set is already included. No need to run any python scripts to get it to work.
+
+Photos and Thumbnails ZIP: https://file.kiwi/086c80d6#wDLd0yM4tVLGpu-vjik23Q
 
 This download may expire or become invalid soon. Hopefully someone hosts a
-torrent I can link here instead soon.
+torrent I can link here instead.
 
 `./photos/` and `./thumbnails/` are gitignored (the originals are ~several
 GB) and **must be populated yourself** before `build_manifest.py` will have
