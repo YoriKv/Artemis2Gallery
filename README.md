@@ -37,6 +37,11 @@ Open directly in a browser — no web server needed; `photos.js` loads via a
 
 ## Photos and thumbnails (download separately)
 
+Download as ZIP - https://file.kiwi/086c80d6#wDLd0yM4tVLGpu-vjik23Q
+
+This download may expire or become invalid soon. Hopefully someone hosts a
+torrent I can link here instead soon.
+
 `./photos/` and `./thumbnails/` are gitignored (the originals are ~several
 GB) and **must be populated yourself** before `build_manifest.py` will have
 anything to scan:
