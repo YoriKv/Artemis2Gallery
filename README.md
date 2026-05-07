@@ -10,6 +10,10 @@ the archive.org zip that has the more complete set of 12,200 photos.
 
 https://file.kiwi/1b5c92be#rp8jgKGLarl-MklAe7DHNw
 
+## Demo Video
+
+https://i.imgur.com/Ll5i6We.mp4
+
 ## `make_thumbnails.py`
 
 Generates one 256-px JPEG thumbnail per image in `./photos/` into
