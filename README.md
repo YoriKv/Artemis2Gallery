@@ -5,6 +5,14 @@
 A static HTML viewer for the NASA EOL Artemis II image set, plus a Python
 script that builds the metadata manifest the viewer reads.
 
+## `make_thumbnails.py`
+
+Generates one 256-px JPEG thumbnail per image in `./photos/` into
+`./thumbnails/`, in parallel across CPU cores. Resumable — re-running skips
+photos whose thumbnail already exists. Writes through a `.part` file +
+atomic rename so a Ctrl-C never leaves a half-written thumbnail. Honors
+EXIF orientation. Override `--size`, `--quality`, or `--workers` if needed.
+
 ## `build_manifest.py`
 
 Scans `./photos/`, looks up matching thumbnails in `./thumbnails/`, and writes:
@@ -53,6 +61,13 @@ anything to scan:
 - `./thumbnails/` — one image per photo, named with the same stem (e.g.
   `photos/ART002-E-30001.JPG` → `thumbnails/ART002-E-30001.jpg`).
   `build_manifest.py` matches by stem and ignores extension differences.
+  Easiest way to produce these is `uv run make_thumbnails.py`.
 
-Once both directories exist, run `build_manifest.py` and open
-`gallery.html`.
+Workflow once `./photos/` is populated:
+
+```
+uv run make_thumbnails.py    # generates ./thumbnails/
+uv run build_manifest.py     # writes photos.json + photos.js
+```
+
+Then open `gallery.html`.
