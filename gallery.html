@@ -80,12 +80,28 @@
   body.grouped .grp-ctl { display: flex !important; }
 
   /* Time-range filter: two stacked range inputs sharing a common min/max
-     window; the upper one drives "from", the lower one "to". */
+     window; the upper one drives "from", the lower one "to". Each row has
+     ◀ / ▶ precision arrows that step the value by the slider's step (1 min)
+     and hold-to-repeat. */
   .time-range { gap: 8px; }
   .time-range .t-stack {
-    display: flex; flex-direction: column; gap: 2px;
+    display: flex; flex-direction: column; gap: 4px;
   }
-  .time-range .t-stack input[type=range] { width: 180px; }
+  .time-range .t-row { display: flex; align-items: center; gap: 4px; }
+  .time-range .t-row input[type=range] { width: 180px; }
+  .time-range .t-step {
+    width: 22px; height: 18px; padding: 0;
+    background: #0e1216; color: var(--fg-dim);
+    border: 1px solid #2a323b; border-radius: 4px;
+    cursor: pointer; font-size: 10px; line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+    user-select: none;
+  }
+  .time-range .t-step:hover:not(:disabled) {
+    background: #1a1f25; color: var(--fg); border-color: #3a4250;
+  }
+  .time-range .t-step:active:not(:disabled) { background: #232930; }
+  .time-range .t-step:disabled { opacity: 0.4; cursor: not-allowed; }
   .time-range .t-label {
     font-variant-numeric: tabular-nums; font-size: 12px; white-space: nowrap;
     color: var(--fg); min-width: 8em;
@@ -223,8 +239,16 @@
   <label class="time-range">
     Time
     <span class="t-stack">
-      <input id="time-from" type="range" disabled>
-      <input id="time-to"   type="range" disabled>
+      <span class="t-row">
+        <button type="button" class="t-step" id="time-from-prev" title="−1 min" aria-label="Decrement start time">&#9664;</button>
+        <input id="time-from" type="range" disabled>
+        <button type="button" class="t-step" id="time-from-next" title="+1 min" aria-label="Increment start time">&#9654;</button>
+      </span>
+      <span class="t-row">
+        <button type="button" class="t-step" id="time-to-prev" title="−1 min" aria-label="Decrement end time">&#9664;</button>
+        <input id="time-to" type="range" disabled>
+        <button type="button" class="t-step" id="time-to-next" title="+1 min" aria-label="Increment end time">&#9654;</button>
+      </span>
     </span>
     <span id="time-range-label" class="t-label all">all</span>
   </label>
@@ -307,6 +331,10 @@ const timeThrV = document.getElementById('time-thr-v');
 const timeFromEl = document.getElementById('time-from');
 const timeToEl = document.getElementById('time-to');
 const timeRangeLabel = document.getElementById('time-range-label');
+const timeFromPrev = document.getElementById('time-from-prev');
+const timeFromNext = document.getElementById('time-from-next');
+const timeToPrev = document.getElementById('time-to-prev');
+const timeToNext = document.getElementById('time-to-next');
 const photographerEl = document.getElementById('photographer-filter');
 
 let ITEMS = [];
@@ -523,6 +551,53 @@ timeFromEl.addEventListener('input',  () => { syncTimeOrder(timeFromEl); updateT
 timeFromEl.addEventListener('change', () => { recomputeVisible(); applyView(); });
 timeToEl.addEventListener('input',    () => { syncTimeOrder(timeToEl);   updateTimeRangeLabel(); });
 timeToEl.addEventListener('change',   () => { recomputeVisible(); applyView(); });
+
+// Precision arrows: step the slider's value by exactly its `step` (1 min) on
+// each click, and hold-to-repeat after a 350ms delay. To stay responsive on
+// 11k photos we only update the slider + label live during a held press, and
+// run the actual filter+regroup once on release.
+function stepTimeValue(input, dir) {
+  if (input.disabled) return false;
+  const step = +input.step || 60000;
+  const min  = +input.min;
+  const max  = +input.max;
+  const cur  = +input.value;
+  let next = cur + dir * step;
+  if (next < min) next = min;
+  if (next > max) next = max;
+  if (next === cur) return false;
+  input.value = String(next);
+  syncTimeOrder(input);
+  updateTimeRangeLabel();
+  return true;
+}
+function attachStepRepeat(button, input, dir) {
+  let initialDelay = null, repeat = null, dirty = false;
+  const tick = () => { if (stepTimeValue(input, dir)) dirty = true; };
+  const start = (e) => {
+    if (e.button !== undefined && e.button !== 0) return;
+    if (button.disabled) return;
+    e.preventDefault();
+    dirty = false;
+    tick();
+    initialDelay = setTimeout(() => { repeat = setInterval(tick, 80); }, 350);
+  };
+  const end = () => {
+    if (initialDelay) { clearTimeout(initialDelay); initialDelay = null; }
+    if (repeat)       { clearInterval(repeat);      repeat = null; }
+    if (dirty) { recomputeVisible(); applyView(); dirty = false; }
+  };
+  button.addEventListener('mousedown', start);
+  button.addEventListener('mouseup', end);
+  button.addEventListener('mouseleave', end);
+  button.addEventListener('touchstart', start, { passive: false });
+  button.addEventListener('touchend', end);
+  button.addEventListener('touchcancel', end);
+}
+attachStepRepeat(timeFromPrev, timeFromEl, -1);
+attachStepRepeat(timeFromNext, timeFromEl, +1);
+attachStepRepeat(timeToPrev,   timeToEl,   -1);
+attachStepRepeat(timeToNext,   timeToEl,   +1);
 
 photographerEl.addEventListener('change', () => { recomputeVisible(); applyView(); });
 
@@ -759,12 +834,13 @@ function initTimeRange() {
     if (t < tMin) tMin = t;
     if (t > tMax) tMax = t;
   }
-  if (!isFinite(tMin) || !isFinite(tMax) || tMin === tMax) {
-    timeFromEl.disabled = true;
-    timeToEl.disabled = true;
-  } else {
-    timeFromEl.disabled = false;
-    timeToEl.disabled = false;
+  const enable = isFinite(tMin) && isFinite(tMax) && tMin !== tMax;
+  timeFromEl.disabled = !enable;
+  timeToEl.disabled   = !enable;
+  for (const b of [timeFromPrev, timeFromNext, timeToPrev, timeToNext]) {
+    b.disabled = !enable;
+  }
+  if (enable) {
     timeFromEl.min = String(tMin); timeFromEl.max = String(tMax);
     timeToEl.min   = String(tMin); timeToEl.max   = String(tMax);
     timeFromEl.value = String(tMin);
