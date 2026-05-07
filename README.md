@@ -5,6 +5,8 @@
 A static HTML viewer for the NASA EOL Artemis II image set, plus a Python
 script that builds the metadata manifest the viewer reads.
 
+### Skip to the Photos and thumbnails section. You do not need to run any python to get this tool to work. Just download the photos and open the html file.
+
 ## `make_thumbnails.py`
 
 Generates one 256-px JPEG thumbnail per image in `./photos/` into
