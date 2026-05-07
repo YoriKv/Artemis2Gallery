@@ -39,7 +39,7 @@ Open directly in a browser — no web server needed; `photos.js` loads via a
 
 ## Photos and thumbnails (download separately)
 
-Download as ZIP - https://file.kiwi/086c80d6#wDLd0yM4tVLGpu-vjik23Q
+Download as ZIP, extract into the same folder as gallery.html - https://file.kiwi/086c80d6#wDLd0yM4tVLGpu-vjik23Q
 
 This download may expire or become invalid soon. Hopefully someone hosts a
 torrent I can link here instead soon.
