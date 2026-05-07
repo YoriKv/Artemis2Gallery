@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Artemis II Photo Gallery</title>
+<style>
+  :root {
+    --bg: #0b0d10;
+    --bg-elev: #14181d;
+    --fg: #e6e8eb;
+    --fg-dim: #8a929c;
+    --accent: #5aa9ff;
+    --tile: 200px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg);
+    font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  header {
+    position: sticky; top: 0; z-index: 5;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px;
+    padding: 10px 20px; background: var(--bg-elev);
+    border-bottom: 1px solid #20262d;
+  }
+  header h1 { margin: 0; font-size: 16px; font-weight: 600; }
+  header .count { color: var(--fg-dim); font-variant-numeric: tabular-nums; }
+  header label { color: var(--fg-dim); display: flex; align-items: center; gap: 6px; }
+  header input[type=range] { width: 140px; }
+  header input[type=search] {
+    margin-left: auto; width: 240px;
+    padding: 6px 10px; border-radius: 6px;
+    border: 1px solid #2a323b; background: #0e1216; color: var(--fg);
+    outline: none;
+  }
+  header input[type=search]:focus { border-color: var(--accent); }
+  #status { padding: 24px; color: var(--fg-dim); }
+  #status code { background: #1a1f25; padding: 1px 6px; border-radius: 3px; }
+  #grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(var(--tile), 1fr));
+    gap: 4px; padding: 4px;
+  }
+  .cell {
+    position: relative; aspect-ratio: 3 / 2;
+    background: #1a1f25; overflow: hidden; cursor: zoom-in;
+    border-radius: 2px;
+  }
+  .cell img {
+    width: 100%; height: 100%; object-fit: cover;
+    display: block; transition: transform .15s ease, opacity .2s ease;
+    opacity: 0;
+  }
+  .cell img.loaded { opacity: 1; }
+  .cell:hover img { transform: scale(1.04); }
+  .cell .name {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    padding: 4px 6px; font-size: 11px; color: #fff;
+    background: linear-gradient(to top, rgba(0,0,0,.65), rgba(0,0,0,0));
+    opacity: 0; transition: opacity .15s ease;
+    pointer-events: none; font-variant-numeric: tabular-nums;
+  }
+  .cell:hover .name { opacity: 1; }
+  .cell.no-thumb {
+    display: flex; align-items: center; justify-content: center;
+    color: var(--fg-dim); font-size: 11px; padding: 6px; text-align: center;
+    word-break: break-all;
+  }
+  .cell.broken img { display: none; }
+  .cell.broken { color: var(--fg-dim); }
+  .cell .badge {
+    position: absolute; top: 6px; right: 6px;
+    background: rgba(0,0,0,.7); color: #fff;
+    font-size: 11px; font-weight: 600;
+    padding: 2px 8px; border-radius: 10px;
+    pointer-events: none;
+    box-shadow: 0 0 0 1px rgba(255,255,255,.1);
+  }
+
+  /* Threshold sliders only show when grouping is enabled. */
+  .grp-ctl { display: none !important; }
+  body.grouped .grp-ctl { display: flex !important; }
+
+  /* Time-range filter: two stacked range inputs sharing a common min/max
+     window; the upper one drives "from", the lower one "to". */
+  .time-range { gap: 8px; }
+  .time-range .t-stack {
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .time-range .t-stack input[type=range] { width: 180px; }
+  .time-range .t-label {
+    font-variant-numeric: tabular-nums; font-size: 12px; white-space: nowrap;
+    color: var(--fg); min-width: 8em;
+  }
+  .time-range .t-label.all { color: var(--fg-dim); }
+
+  /* Reusable header button (export, modal copy/close). */
+  .header-btn {
+    padding: 6px 12px; border-radius: 6px;
+    border: 1px solid #2a323b; background: #0e1216; color: var(--fg);
+    cursor: pointer; font: inherit;
+  }
+  .header-btn:hover { background: #1a1f25; border-color: #3a4250; }
+
+  /* Dark-themed select for the photographer filter. */
+  header select {
+    padding: 6px 10px; border-radius: 6px;
+    border: 1px solid #2a323b; background: #0e1216; color: var(--fg);
+    font: inherit; cursor: pointer; outline: none;
+  }
+  header select:focus { border-color: var(--accent); }
+
+  /* Lightbox: photographer pill + description row. */
+  .lb-photog {
+    background: rgba(90, 169, 255, .14); color: var(--accent);
+    padding: 1px 8px; border-radius: 10px;
+    font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .5px;
+  }
+  .lb-photog:empty { display: none; }
+  #lb .description {
+    flex: 1 1 100%;
+    color: var(--fg-dim); font-size: 12px; font-style: italic;
+    margin-top: -4px;
+  }
+  #lb .description:empty { display: none; }
+
+  /* Modal (export list popup). */
+  .modal {
+    position: fixed; inset: 0; background: rgba(0,0,0,.75);
+    display: none; align-items: center; justify-content: center;
+    z-index: 20;
+  }
+  .modal.open { display: flex; }
+  .modal-box {
+    background: var(--bg-elev); border: 1px solid #2a323b;
+    border-radius: 8px;
+    width: min(680px, 92vw); height: min(80vh, 720px);
+    display: flex; flex-direction: column;
+    padding: 14px; gap: 10px;
+  }
+  .modal-head { display: flex; align-items: center; gap: 10px; }
+  .modal-head b { flex: 1; font-size: 14px; }
+  .modal textarea {
+    flex: 1; resize: none;
+    background: #0b0d10; color: var(--fg);
+    border: 1px solid #2a323b; border-radius: 4px;
+    padding: 10px;
+    font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    outline: none;
+    white-space: pre;
+  }
+  .modal textarea:focus { border-color: var(--accent); }
+  .modal-hint { font-size: 12px; color: var(--fg-dim); }
+
+  /* Lightbox */
+  #lb {
+    position: fixed; inset: 0; background: rgba(0,0,0,.92);
+    display: none; align-items: center; justify-content: center;
+    z-index: 10;
+  }
+  #lb.open { display: flex; }
+  #lb img { max-width: 100vw; max-height: 100vh; object-fit: contain; }
+  #lb .meta {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    padding: 12px 20px; color: var(--fg);
+    background: linear-gradient(to top, rgba(0,0,0,.7), rgba(0,0,0,0));
+    display: flex; gap: 16px; flex-wrap: wrap;
+    justify-content: space-between; align-items: center;
+    font-variant-numeric: tabular-nums;
+  }
+  #lb .meta .info { display: flex; gap: 12px; flex-wrap: wrap; }
+  #lb .meta .info span { color: var(--fg-dim); }
+  #lb .meta .info b { color: var(--fg); font-weight: 500; }
+  #lb .meta a { color: var(--accent); text-decoration: none; }
+  #lb .meta a:hover { text-decoration: underline; }
+  /* Side / corner controls only -- direct children of #lb. The meta bar's
+     member-nav buttons style themselves separately below. */
+  #lb > button {
+    position: absolute; top: 50%; transform: translateY(-50%);
+    background: rgba(0,0,0,.5); color: #fff;
+    border: 1px solid #2a323b; cursor: pointer;
+    width: 48px; height: 64px; font-size: 24px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #lb > button:hover { background: rgba(0,0,0,.8); }
+  #lb #prev { left: 12px; }
+  #lb #next { right: 12px; }
+  #lb #close {
+    top: 12px; right: 12px; transform: none;
+    width: 40px; height: 40px; font-size: 20px;
+  }
+  #lb #play {
+    top: 12px; left: 12px; transform: none;
+    width: 40px; height: 40px; font-size: 14px;
+  }
+  #lb #play.playing { background: var(--accent); color: #0b0d10; border-color: var(--accent); }
+
+  /* Member-nav (within-group prev/next) sits inside the meta bar. */
+  .member-nav { display: none; align-items: center; gap: 6px; }
+  #lb.has-group .member-nav { display: flex; }
+  .member-nav button {
+    background: rgba(0,0,0,.5); color: #fff;
+    border: 1px solid #2a323b; cursor: pointer;
+    width: 26px; height: 26px; font-size: 11px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 4px;
+  }
+  .member-nav button:hover { background: rgba(0,0,0,.8); border-color: #3a4250; }
+
+  @media (max-width: 600px) {
+    :root { --tile: 120px; }
+    header input[type=search] { width: 140px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Artemis II</h1>
+  <span class="count" id="count">loading…</span>
+  <label>Size <input id="size" type="range" min="100" max="400" value="200" step="20"></label>
+  <label><input id="group" type="checkbox" checked> Group similar</label>
+  <label class="grp-ctl">phash ≤<input id="phash-thr" type="range" min="0" max="20" value="8"><span id="phash-thr-v">8</span></label>
+  <label class="grp-ctl">≤<input id="time-thr" type="range" min="1" max="120" value="10"><span id="time-thr-v">10</span> min</label>
+  <label class="time-range">
+    Time
+    <span class="t-stack">
+      <input id="time-from" type="range" disabled>
+      <input id="time-to"   type="range" disabled>
+    </span>
+    <span id="time-range-label" class="t-label all">all</span>
+  </label>
+  <select id="photographer-filter" title="Filter by photographer">
+    <option value="">All photographers</option>
+    <option value="Koch">Koch</option>
+    <option value="Glover">Glover</option>
+    <option value="Hansen">Hansen</option>
+    <option value="Wiseman">Wiseman</option>
+    <option value="__none__">Unknown</option>
+  </select>
+  <input id="filter" type="search" placeholder="Filter description (e.g. lunar)" autocomplete="off">
+  <button id="export-btn" class="header-btn" type="button">Export list</button>
+</header>
+<div id="status"></div>
+<div id="grid"></div>
+
+<!-- Manifest loader. photos.json is the source of truth; build_manifest.py
+     also emits photos.js, a one-line JSONP wrapper that calls
+     loadPhotosManifest(...) at script-load time. We define the callback
+     first so the data is in place before the main app script below runs. -->
+<script>
+  window.__manifest = null;
+  function loadPhotosManifest(data) { window.__manifest = data; }
+</script>
+<script src="photos.js"></script>
+
+<div id="lb" role="dialog" aria-modal="true">
+  <button id="prev" aria-label="Previous">&#10094;</button>
+  <img id="lb-img" alt="">
+  <button id="next" aria-label="Next">&#10095;</button>
+  <button id="play" aria-label="Play slideshow" title="Play / pause (space)">&#9654;</button>
+  <button id="close" aria-label="Close">&times;</button>
+  <div class="meta">
+    <div class="info">
+      <b id="lb-name"></b>
+      <span id="lb-photog" class="lb-photog"></span>
+      <span id="lb-dims"></span>
+      <span id="lb-size"></span>
+      <span id="lb-taken"></span>
+      <span id="lb-phash"></span>
+    </div>
+    <div id="lb-desc" class="description"></div>
+    <div class="member-nav" title="Within-group navigation (up/down arrows)">
+      <button id="lb-up" aria-label="Previous in group" title="↑">&#9650;</button>
+      <span id="lb-member-pos"></span>
+      <button id="lb-down" aria-label="Next in group" title="↓">&#9660;</button>
+    </div>
+    <div>
+      <a id="lb-link" href="" target="_blank" rel="noopener">Open original</a>
+      &nbsp; <span id="lb-pos"></span>
+    </div>
+  </div>
+</div>
+
+<!-- Export-list popup. Shown when the header's Export button is clicked. -->
+<div id="export" class="modal" role="dialog" aria-modal="true">
+  <div class="modal-box">
+    <div class="modal-head">
+      <b>Export filename list</b>
+      <button id="export-copy" class="header-btn" type="button">Copy</button>
+      <button id="export-close" class="header-btn" type="button">Close</button>
+    </div>
+    <textarea id="export-text" readonly spellcheck="false"></textarea>
+    <div id="export-hint" class="modal-hint"></div>
+  </div>
+</div>
+
+<script>
+const grid = document.getElementById('grid');
+const status = document.getElementById('status');
+const countEl = document.getElementById('count');
+const filterEl = document.getElementById('filter');
+const sizeEl = document.getElementById('size');
+const groupEl = document.getElementById('group');
+const phashThrEl = document.getElementById('phash-thr');
+const timeThrEl = document.getElementById('time-thr');
+const phashThrV = document.getElementById('phash-thr-v');
+const timeThrV = document.getElementById('time-thr-v');
+const timeFromEl = document.getElementById('time-from');
+const timeToEl = document.getElementById('time-to');
+const timeRangeLabel = document.getElementById('time-range-label');
+const photographerEl = document.getElementById('photographer-filter');
+
+let ITEMS = [];
+let visible = [];           // photos surviving search + time filters
+let displayGroups = [];     // [{cover, members}] -- always populated; flat
+                            // mode is just one-member groups, so the lightbox
+                            // can use a single navigation model in either mode.
+
+function fmtBytes(n) {
+  if (!n && n !== 0) return '';
+  const u = ['B', 'KB', 'MB', 'GB'];
+  let i = 0; let v = n;
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+  return v.toFixed(v < 10 && i > 0 ? 1 : 0) + ' ' + u[i];
+}
+function fmtClock(ms) {
+  // Render as YYYY-MM-DD HH:MM in UTC. Only minute precision is meaningful
+  // for the slider (step is 60s) and we never apply timezone math.
+  const d = new Date(ms);
+  return d.toISOString().slice(0, 16).replace('T', ' ');
+}
+
+// --- Grouping helpers -----------------------------------------------------
+// EXIF dates are formatted "YYYY:MM:DD HH:MM:SS" -- the colon-date form
+// JS's Date constructor refuses to parse, so split it out manually. Returned
+// value is ms since epoch interpreted as UTC; only deltas matter for grouping.
+function parseExifDate(s) {
+  const m = /^(\d{4}):(\d{2}):(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/.exec(s || '');
+  if (!m) return null;
+  return Date.UTC(+m[1], +m[2]-1, +m[3], +m[4], +m[5], +m[6]);
+}
+function popcount32(n) {
+  n = n - ((n >>> 1) & 0x55555555);
+  n = (n & 0x33333333) + ((n >>> 2) & 0x33333333);
+  return (((n + (n >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24;
+}
+function hammingHex(a, b) {
+  const a1 = parseInt(a.slice(0, 8), 16) >>> 0;
+  const a2 = parseInt(a.slice(8, 16), 16) >>> 0;
+  const b1 = parseInt(b.slice(0, 8), 16) >>> 0;
+  const b2 = parseInt(b.slice(8, 16), 16) >>> 0;
+  return popcount32(a1 ^ b1) + popcount32(a2 ^ b2);
+}
+
+function buildGroups(items, secGap, phashDist) {
+  const dated = [];
+  const orphans = [];
+  for (const it of items) {
+    const t = parseExifDate(it.taken);
+    if (t == null || !it.phash) orphans.push({ cover: it, members: [it] });
+    else dated.push([t, it]);
+  }
+  dated.sort((a, b) => a[0] - b[0]);
+  const groups = [];
+  let cur = null, lastT = 0, lastH = '';
+  for (const [t, it] of dated) {
+    if (cur && (t - lastT) / 1000 <= secGap && hammingHex(it.phash, lastH) <= phashDist) {
+      cur.members.push(it);
+    } else {
+      cur = { cover: it, members: [it] };
+      groups.push(cur);
+    }
+    lastT = t; lastH = it.phash;
+  }
+  groups.push(...orphans);
+  return groups;
+}
+
+// --- Filter pipeline ------------------------------------------------------
+// Three filters compose into `visible`: time-range, search-query, and the
+// implicit "is in ITEMS". Time-range uses the slider min/max as the active
+// window; when the slider hasn't been touched (full extent), all photos pass
+// regardless of whether they have a `taken` date. Once the user narrows the
+// range, undated photos drop out -- there's no time signal to keep them.
+function recomputeVisible() {
+  const tFrom = +timeFromEl.value;
+  const tTo   = +timeToEl.value;
+  const tMin  = +timeFromEl.min;
+  const tMax  = +timeFromEl.max;
+  const fullRange = !timeFromEl.disabled
+    ? (tFrom === tMin && tTo === tMax)
+    : true;
+  const q = filterEl.value.trim().toLowerCase();
+  const ph = photographerEl.value;
+
+  visible = ITEMS.filter(it => {
+    // Search filter matches against the photo's description (the EXIF
+    // ImageDescription string). Photos without a description never match a
+    // non-empty query.
+    if (q && !(it.description || '').toLowerCase().includes(q)) return false;
+    // Photographer filter: '' means any, '__none__' means "no attribution",
+    // otherwise an exact match against the canonical surname.
+    if (ph === '__none__') {
+      if (it.photographer) return false;
+    } else if (ph && it.photographer !== ph) {
+      return false;
+    }
+    if (fullRange) return true;
+    if (!it.taken) return false;
+    const t = parseExifDate(it.taken);
+    if (t == null) return false;
+    return t >= tFrom && t <= tTo;
+  });
+  updateTimeRangeLabel();
+}
+
+function updateTimeRangeLabel() {
+  if (timeFromEl.disabled) {
+    timeRangeLabel.textContent = '(no dates)';
+    timeRangeLabel.classList.add('all');
+    return;
+  }
+  const tFrom = +timeFromEl.value, tTo = +timeToEl.value;
+  const tMin = +timeFromEl.min, tMax = +timeFromEl.max;
+  if (tFrom === tMin && tTo === tMax) {
+    timeRangeLabel.textContent = 'all';
+    timeRangeLabel.classList.add('all');
+  } else {
+    timeRangeLabel.textContent = fmtClock(tFrom) + ' – ' + fmtClock(tTo) + ' UTC';
+    timeRangeLabel.classList.remove('all');
+  }
+}
+
+// --- Rendering ------------------------------------------------------------
+function renderCells(groups) {
+  const frag = document.createDocumentFragment();
+  groups.forEach((g, gi) => {
+    const el = document.createElement('div');
+    el.className = 'cell';
+    const cover = g.cover;
+    if (cover.thumbnail) {
+      const img = document.createElement('img');
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      img.src = cover.thumbnail;
+      img.alt = cover.name;
+      img.onload = () => img.classList.add('loaded');
+      img.onerror = () => el.classList.add('broken');
+      el.appendChild(img);
+    } else {
+      el.classList.add('no-thumb');
+      el.textContent = cover.name;
+    }
+    if (g.members.length > 1) {
+      const b = document.createElement('div');
+      b.className = 'badge';
+      b.textContent = '+' + (g.members.length - 1);
+      el.appendChild(b);
+    }
+    const name = document.createElement('div');
+    name.className = 'name';
+    name.textContent = cover.name;
+    el.appendChild(name);
+    el.addEventListener('click', () => openLightbox(gi, 0));
+    frag.appendChild(el);
+  });
+  grid.replaceChildren(frag);
+}
+
+function applyView() {
+  if (groupEl.checked) {
+    document.body.classList.add('grouped');
+    displayGroups = buildGroups(visible, +timeThrEl.value * 60, +phashThrEl.value);
+  } else {
+    document.body.classList.remove('grouped');
+    // In flat mode every photo is its own one-member group, so the lightbox's
+    // group/member nav model still works -- left/right just walks photos.
+    displayGroups = visible.map(it => ({ cover: it, members: [it] }));
+  }
+  renderCells(displayGroups);
+  updateCount();
+}
+
+function updateCount() {
+  if (groupEl.checked) {
+    const total = displayGroups.reduce((a, g) => a + g.members.length, 0);
+    countEl.textContent =
+      displayGroups.length.toLocaleString() + ' groups (' +
+      total.toLocaleString() + ' photos)';
+  } else {
+    countEl.textContent = visible.length.toLocaleString() + ' photos';
+  }
+}
+
+// --- Filter / control wiring ----------------------------------------------
+let filterTimer;
+filterEl.addEventListener('input', () => {
+  clearTimeout(filterTimer);
+  filterTimer = setTimeout(() => { recomputeVisible(); applyView(); }, 120);
+});
+
+sizeEl.addEventListener('input', () => {
+  document.documentElement.style.setProperty('--tile', sizeEl.value + 'px');
+});
+
+groupEl.addEventListener('change', applyView);
+// Live-update slider labels on `input`; re-cluster only on `change` (mouse-up).
+phashThrEl.addEventListener('input',  () => { phashThrV.textContent = phashThrEl.value; });
+phashThrEl.addEventListener('change', () => { if (groupEl.checked) applyView(); });
+timeThrEl.addEventListener('input',   () => { timeThrV.textContent = timeThrEl.value; });
+timeThrEl.addEventListener('change',  () => { if (groupEl.checked) applyView(); });
+
+// Time-range sliders: keep from <= to as the user drags either thumb. Updating
+// only on `change` avoids re-running the filter+regroup on every pixel.
+function syncTimeOrder(triggered) {
+  const from = +timeFromEl.value;
+  const to   = +timeToEl.value;
+  if (from > to) {
+    if (triggered === timeFromEl) timeToEl.value = from;
+    else                          timeFromEl.value = to;
+  }
+}
+timeFromEl.addEventListener('input',  () => { syncTimeOrder(timeFromEl); updateTimeRangeLabel(); });
+timeFromEl.addEventListener('change', () => { recomputeVisible(); applyView(); });
+timeToEl.addEventListener('input',    () => { syncTimeOrder(timeToEl);   updateTimeRangeLabel(); });
+timeToEl.addEventListener('change',   () => { recomputeVisible(); applyView(); });
+
+photographerEl.addEventListener('change', () => { recomputeVisible(); applyView(); });
+
+// --- Lightbox -------------------------------------------------------------
+const lb = document.getElementById('lb');
+const lbImg = document.getElementById('lb-img');
+const lbName = document.getElementById('lb-name');
+const lbDims = document.getElementById('lb-dims');
+const lbSize = document.getElementById('lb-size');
+const lbTaken = document.getElementById('lb-taken');
+const lbPhash = document.getElementById('lb-phash');
+const lbPos = document.getElementById('lb-pos');
+const lbLink = document.getElementById('lb-link');
+const lbMemberPos = document.getElementById('lb-member-pos');
+const lbPhotog = document.getElementById('lb-photog');
+const lbDesc = document.getElementById('lb-desc');
+const playBtn = document.getElementById('play');
+const upBtn = document.getElementById('lb-up');
+const downBtn = document.getElementById('lb-down');
+
+// Lightbox position is (groupIdx, memberIdx) over `displayGroups`. Left/Right
+// arrow keys (and the side buttons) walk groups; Up/Down keys (and the small
+// member-nav buttons in the meta bar) walk members within the current group.
+let lbGroupIdx = -1;
+let lbMemberIdx = 0;
+let playTimer = null;
+const PLAY_INTERVAL_MS = 1500;
+
+function openLightbox(gIdx, mIdx) {
+  lbGroupIdx = gIdx;
+  lbMemberIdx = mIdx || 0;
+  showLightbox();
+  lb.classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function closeLightbox() {
+  stopPlay();
+  lb.classList.remove('open');
+  document.body.style.overflow = '';
+  lbImg.src = '';
+}
+function currentGroup() {
+  return (lbGroupIdx >= 0 && lbGroupIdx < displayGroups.length)
+    ? displayGroups[lbGroupIdx] : null;
+}
+function showLightbox() {
+  const g = currentGroup();
+  if (!g) return;
+  if (lbMemberIdx < 0) lbMemberIdx = 0;
+  if (lbMemberIdx >= g.members.length) lbMemberIdx = g.members.length - 1;
+  const it = g.members[lbMemberIdx];
+  lbImg.src = it.photo;
+  lbName.textContent = it.name;
+  lbPhotog.textContent = it.photographer || '';
+  lbDims.textContent = (it.width && it.height) ? `${it.width}×${it.height}` : '';
+  lbSize.textContent = fmtBytes(it.size);
+  lbTaken.textContent = it.taken || '';
+  lbPhash.textContent = it.phash ? 'phash ' + it.phash : '';
+  lbDesc.textContent = it.description || '';
+  lbLink.href = it.photo;
+
+  const isMulti = g.members.length > 1;
+  lb.classList.toggle('has-group', isMulti);
+  lbMemberPos.textContent = isMulti
+    ? (lbMemberIdx + 1) + ' / ' + g.members.length + ' in group'
+    : '';
+  lbPos.textContent = 'group ' + (lbGroupIdx + 1) + ' / ' + displayGroups.length;
+
+  // Preload likely-next images: next member in this group, and the cover of
+  // the adjacent groups for snappier left/right nav.
+  if (lbMemberIdx + 1 < g.members.length) new Image().src = g.members[lbMemberIdx + 1].photo;
+  if (lbGroupIdx + 1 < displayGroups.length) new Image().src = displayGroups[lbGroupIdx + 1].cover.photo;
+  if (lbGroupIdx - 1 >= 0)                   new Image().src = displayGroups[lbGroupIdx - 1].cover.photo;
+}
+function navGroup(delta) {
+  let next = lbGroupIdx + delta;
+  if (next < 0) next = 0;
+  if (next >= displayGroups.length) next = displayGroups.length - 1;
+  if (next === lbGroupIdx) return;
+  lbGroupIdx = next;
+  lbMemberIdx = 0;
+  showLightbox();
+}
+function navMember(delta) {
+  const g = currentGroup();
+  if (!g) return;
+  let next = lbMemberIdx + delta;
+  if (next < 0) next = 0;
+  if (next >= g.members.length) next = g.members.length - 1;
+  if (next === lbMemberIdx) return;
+  lbMemberIdx = next;
+  showLightbox();
+}
+
+// --- Slideshow play/pause -------------------------------------------------
+// Auto-play cycles within the current group's members, wrapping at the end.
+// Only enabled for multi-member groups -- a singleton has nothing to play.
+function startPlay() {
+  if (playTimer) return;
+  const g = currentGroup();
+  if (!g || g.members.length <= 1) return;
+  playBtn.classList.add('playing');
+  playBtn.innerHTML = '&#9616;&#9616;';
+  playTimer = setInterval(() => {
+    const g2 = currentGroup();
+    if (!g2 || g2.members.length <= 1) { stopPlay(); return; }
+    lbMemberIdx = (lbMemberIdx + 1) % g2.members.length;
+    showLightbox();
+  }, PLAY_INTERVAL_MS);
+}
+function stopPlay() {
+  if (!playTimer) return;
+  clearInterval(playTimer);
+  playTimer = null;
+  playBtn.classList.remove('playing');
+  playBtn.innerHTML = '&#9654;';
+}
+function togglePlay() { playTimer ? stopPlay() : startPlay(); }
+
+playBtn.addEventListener('click', e => { e.stopPropagation(); togglePlay(); });
+document.getElementById('prev').addEventListener('click', e => { e.stopPropagation(); stopPlay(); navGroup(-1); });
+document.getElementById('next').addEventListener('click', e => { e.stopPropagation(); stopPlay(); navGroup(1); });
+upBtn.addEventListener('click',   e => { e.stopPropagation(); stopPlay(); navMember(-1); });
+downBtn.addEventListener('click', e => { e.stopPropagation(); stopPlay(); navMember(1); });
+document.getElementById('close').addEventListener('click', closeLightbox);
+lb.addEventListener('click', e => { if (e.target === lb || e.target === lbImg) closeLightbox(); });
+
+window.addEventListener('keydown', e => {
+  // Don't hijack typing in the search box / export textarea.
+  const t = e.target;
+  const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA');
+
+  // Export modal handles Escape locally regardless of focus.
+  if (exportModal.classList.contains('open')) {
+    if (e.key === 'Escape') { closeExport(); e.preventDefault(); }
+    return;
+  }
+  if (!lb.classList.contains('open')) return;
+  if (typing) return;
+  if (e.key === 'Escape')          closeLightbox();
+  else if (e.key === 'ArrowRight') { stopPlay(); navGroup(1); }
+  else if (e.key === 'ArrowLeft')  { stopPlay(); navGroup(-1); }
+  else if (e.key === 'ArrowDown')  { stopPlay(); navMember(1); e.preventDefault(); }
+  else if (e.key === 'ArrowUp')    { stopPlay(); navMember(-1); e.preventDefault(); }
+  else if (e.key === ' ')          { togglePlay(); e.preventDefault(); }
+});
+
+// --- Export modal ---------------------------------------------------------
+const exportBtn = document.getElementById('export-btn');
+const exportModal = document.getElementById('export');
+const exportText = document.getElementById('export-text');
+const exportHint = document.getElementById('export-hint');
+const exportCopy = document.getElementById('export-copy');
+const exportClose = document.getElementById('export-close');
+
+function exportFilenameFor(it) {
+  // `photo` is a relative URL like "photos/ART002-E-30001.JPG"; users
+  // generally want the bare filename, not the dir prefix.
+  const path = it.photo || it.name;
+  return path.split('/').pop();
+}
+function buildExportText() {
+  const lines = [];
+  for (const g of displayGroups) {
+    g.members.forEach((it, i) => {
+      lines.push((i === 0 ? '' : '  ') + exportFilenameFor(it));
+    });
+  }
+  return lines.join('\n');
+}
+function openExport() {
+  exportText.value = buildExportText();
+  const total = displayGroups.reduce((a, g) => a + g.members.length, 0);
+  const groupedNote = groupEl.checked
+    ? 'indent = additional members of the preceding group'
+    : 'flat list (grouping is off)';
+  exportHint.textContent =
+    total.toLocaleString() + ' files in ' +
+    displayGroups.length.toLocaleString() + ' groups · ' + groupedNote;
+  exportModal.classList.add('open');
+  // Pre-select so the user can Ctrl/Cmd-C immediately if they prefer keyboard.
+  setTimeout(() => { exportText.focus(); exportText.select(); }, 0);
+}
+function closeExport() { exportModal.classList.remove('open'); }
+
+exportBtn.addEventListener('click', openExport);
+exportClose.addEventListener('click', closeExport);
+exportModal.addEventListener('click', e => {
+  if (e.target === exportModal) closeExport();
+});
+exportCopy.addEventListener('click', async () => {
+  const original = exportCopy.textContent;
+  try {
+    await navigator.clipboard.writeText(exportText.value);
+    exportCopy.textContent = 'Copied!';
+  } catch (err) {
+    // Fallback: select the textarea so the user can hit Ctrl/Cmd-C.
+    exportText.focus();
+    exportText.select();
+    try { document.execCommand('copy'); exportCopy.textContent = 'Copied'; }
+    catch { exportCopy.textContent = 'Press Ctrl+C'; }
+  }
+  setTimeout(() => { exportCopy.textContent = original; }, 1500);
+});
+
+// --- Photographer dropdown ------------------------------------------------
+// Annotate each option with its count so the user can see distribution
+// without opening the dropdown menu manually.
+function updatePhotographerCounts() {
+  const counts = Object.create(null);
+  for (const it of ITEMS) {
+    const k = it.photographer || '__none__';
+    counts[k] = (counts[k] || 0) + 1;
+  }
+  for (const opt of photographerEl.options) {
+    const v = opt.value;
+    if (!v) {
+      opt.textContent = `All photographers (${ITEMS.length.toLocaleString()})`;
+      continue;
+    }
+    const base = v === '__none__' ? 'Unknown' : v;
+    const c = counts[v] || 0;
+    opt.textContent = `${base} (${c.toLocaleString()})`;
+  }
+}
+
+// --- Time-range slider initialization -------------------------------------
+function initTimeRange() {
+  let tMin = Infinity, tMax = -Infinity;
+  for (const it of ITEMS) {
+    if (!it.taken) continue;
+    const t = parseExifDate(it.taken);
+    if (t == null) continue;
+    if (t < tMin) tMin = t;
+    if (t > tMax) tMax = t;
+  }
+  if (!isFinite(tMin) || !isFinite(tMax) || tMin === tMax) {
+    timeFromEl.disabled = true;
+    timeToEl.disabled = true;
+  } else {
+    timeFromEl.disabled = false;
+    timeToEl.disabled = false;
+    timeFromEl.min = String(tMin); timeFromEl.max = String(tMax);
+    timeToEl.min   = String(tMin); timeToEl.max   = String(tMax);
+    timeFromEl.value = String(tMin);
+    timeToEl.value   = String(tMax);
+    timeFromEl.step = String(60 * 1000);  // 1 minute
+    timeToEl.step   = String(60 * 1000);
+  }
+  updateTimeRangeLabel();
+}
+
+// --- Load manifest --------------------------------------------------------
+if (window.__manifest && Array.isArray(window.__manifest.items)) {
+  ITEMS = window.__manifest.items;
+  // Sync the slider value labels with their initial values.
+  phashThrV.textContent = phashThrEl.value;
+  timeThrV.textContent  = timeThrEl.value;
+  initTimeRange();
+  updatePhotographerCounts();
+  recomputeVisible();
+  if (visible.length === 0) {
+    countEl.textContent = '';
+    status.innerHTML = 'Manifest is empty -- nothing to display.';
+  } else {
+    status.textContent = '';
+    applyView();
+  }
+} else {
+  countEl.textContent = '';
+  status.innerHTML =
+    '<b>photos.js not loaded.</b> Generate it with ' +
+    '<code>uv run build_manifest.py</code> ' +
+    '(or <code>python3 build_manifest.py</code>) to scan ' +
+    '<code>./photos/</code> and produce <code>photos.json</code> + ' +
+    '<code>photos.js</code> alongside this HTML.';
+}
+</script>
+</body>
+</html>
