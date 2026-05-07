@@ -8,7 +8,7 @@ script that builds the metadata manifest the viewer reads.
 Packaged release with photos, thumbnails, and the gallery files. Updated from
 the archive.org zip that has the more complete set of 12,200 photos.
 
-https://file.kiwi/ec68ac0c#xnCe2sXyf8yDk2U1QmupjA
+https://file.kiwi/1b5c92be#rp8jgKGLarl-MklAe7DHNw
 
 ## `make_thumbnails.py`
 
