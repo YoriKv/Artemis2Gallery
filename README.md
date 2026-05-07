@@ -1,5 +1,7 @@
 # Artemis II Photo Gallery
 
+![Gallery screenshot](screenshot.png)
+
 A static HTML viewer for the NASA EOL Artemis II image set, plus a Python
 script that builds the metadata manifest the viewer reads.
 
