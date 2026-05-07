@@ -260,6 +260,9 @@
     <option value="Wiseman">Wiseman</option>
     <option value="__none__">Unknown</option>
   </select>
+  <select id="camera-filter" title="Filter by camera">
+    <option value="">All cameras</option>
+  </select>
   <input id="filter" type="search" placeholder="Filter description (e.g. lunar)" autocomplete="off">
   <button id="export-btn" class="header-btn" type="button">Export list</button>
 </header>
@@ -286,6 +289,7 @@
     <div class="info">
       <b id="lb-name"></b>
       <span id="lb-photog" class="lb-photog"></span>
+      <span id="lb-camera"></span>
       <span id="lb-dims"></span>
       <span id="lb-size"></span>
       <span id="lb-taken"></span>
@@ -336,6 +340,7 @@ const timeFromNext = document.getElementById('time-from-next');
 const timeToPrev = document.getElementById('time-to-prev');
 const timeToNext = document.getElementById('time-to-next');
 const photographerEl = document.getElementById('photographer-filter');
+const cameraEl = document.getElementById('camera-filter');
 
 let ITEMS = [];
 let visible = [];           // photos surviving search + time filters
@@ -419,6 +424,7 @@ function recomputeVisible() {
     : true;
   const q = filterEl.value.trim().toLowerCase();
   const ph = photographerEl.value;
+  const cam = cameraEl.value;
 
   visible = ITEMS.filter(it => {
     // Search filter matches against the photo's description (the EXIF
@@ -430,6 +436,12 @@ function recomputeVisible() {
     if (ph === '__none__') {
       if (it.photographer) return false;
     } else if (ph && it.photographer !== ph) {
+      return false;
+    }
+    // Camera filter: same shape as photographer.
+    if (cam === '__none__') {
+      if (it.camera) return false;
+    } else if (cam && it.camera !== cam) {
       return false;
     }
     if (fullRange) return true;
@@ -600,6 +612,7 @@ attachStepRepeat(timeToPrev,   timeToEl,   -1);
 attachStepRepeat(timeToNext,   timeToEl,   +1);
 
 photographerEl.addEventListener('change', () => { recomputeVisible(); applyView(); });
+cameraEl.addEventListener('change',       () => { recomputeVisible(); applyView(); });
 
 // --- Lightbox -------------------------------------------------------------
 const lb = document.getElementById('lb');
@@ -613,6 +626,7 @@ const lbPos = document.getElementById('lb-pos');
 const lbLink = document.getElementById('lb-link');
 const lbMemberPos = document.getElementById('lb-member-pos');
 const lbPhotog = document.getElementById('lb-photog');
+const lbCamera = document.getElementById('lb-camera');
 const lbDesc = document.getElementById('lb-desc');
 const playBtn = document.getElementById('play');
 const upBtn = document.getElementById('lb-up');
@@ -652,6 +666,7 @@ function showLightbox() {
   lbImg.src = it.photo;
   lbName.textContent = it.name;
   lbPhotog.textContent = it.photographer || '';
+  lbCamera.textContent = it.camera || '';
   lbDims.textContent = (it.width && it.height) ? `${it.width}×${it.height}` : '';
   lbSize.textContent = fmtBytes(it.size);
   lbTaken.textContent = it.taken || '';
@@ -824,6 +839,37 @@ function updatePhotographerCounts() {
   }
 }
 
+// --- Camera dropdown ------------------------------------------------------
+// Camera names aren't a fixed enumeration like photographers, so build the
+// dropdown options from whatever distinct values appear in the manifest.
+function populateCameraFilter() {
+  const counts = Object.create(null);
+  for (const it of ITEMS) {
+    const k = it.camera || '__none__';
+    counts[k] = (counts[k] || 0) + 1;
+  }
+  cameraEl.replaceChildren();
+  const all = document.createElement('option');
+  all.value = '';
+  all.textContent = `All cameras (${ITEMS.length.toLocaleString()})`;
+  cameraEl.appendChild(all);
+
+  // Real cameras alphabetical; "Unknown" pinned to the bottom of the list.
+  const names = Object.keys(counts).filter(k => k !== '__none__').sort();
+  for (const name of names) {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = `${name} (${counts[name].toLocaleString()})`;
+    cameraEl.appendChild(opt);
+  }
+  if ('__none__' in counts) {
+    const opt = document.createElement('option');
+    opt.value = '__none__';
+    opt.textContent = `Unknown (${counts['__none__'].toLocaleString()})`;
+    cameraEl.appendChild(opt);
+  }
+}
+
 // --- Time-range slider initialization -------------------------------------
 function initTimeRange() {
   let tMin = Infinity, tMax = -Infinity;
@@ -859,6 +905,7 @@ if (window.__manifest && Array.isArray(window.__manifest.items)) {
   timeThrV.textContent  = timeThrEl.value;
   initTimeRange();
   updatePhotographerCounts();
+  populateCameraFilter();
   recomputeVisible();
   if (visible.length === 0) {
     countEl.textContent = '';

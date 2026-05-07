@@ -86,6 +86,7 @@ def load_phash_cache(path: Path) -> dict[str, str]:
 
 # EXIF tag IDs we care about.
 TAG_IMAGE_DESCRIPTION = 0x010E   # IFD0 ImageDescription -- caption / free text
+TAG_MODEL = 0x0110               # IFD0 Model -- camera body model name
 TAG_EXIF_IFD = 0x8769            # pointer to ExifIFD
 TAG_DATETIME_ORIGINAL = 0x9003   # ExifIFD DateTimeOriginal -- shutter time
 TAG_DATETIME_DIGITIZED = 0x9004  # ExifIFD DateTimeDigitized -- also capture time
@@ -162,6 +163,17 @@ def extract_one(args: tuple[str, str, str, str]) -> dict:
                             # Canonicalize to title-case so downstream code
                             # can compare with == without re-normalizing.
                             record["photographer"] = m.group(1).capitalize()
+                # Camera body model. EXIF stores it all-caps for many makers
+                # ("NIKON D5", "NIKON Z 9"); title-case gives a friendlier
+                # display string while still grouping cleanly by ==.
+                model = exif.get(TAG_MODEL)
+                if model:
+                    if isinstance(model, bytes):
+                        try: model = model.decode("utf-8", errors="replace")
+                        except Exception: model = repr(model)
+                    model = str(model).strip("\x00 \t\r\n")
+                    if model:
+                        record["camera"] = model.title()
             except Exception:
                 pass
             try:
@@ -311,21 +323,30 @@ def main() -> int:
     with_phash = sum(1 for r in items if "phash" in r)
     with_desc = sum(1 for r in items if "description" in r)
     by_photog: dict[str, int] = {}
+    by_camera: dict[str, int] = {}
     for r in items:
         p = r.get("photographer")
         if p:
             by_photog[p] = by_photog.get(p, 0) + 1
+        c = r.get("camera")
+        if c:
+            by_camera[c] = by_camera.get(c, 0) + 1
     with_photog = sum(by_photog.values())
+    with_camera = sum(by_camera.values())
     photog_breakdown = ", ".join(
         f"{name}={by_photog.get(name, 0)}" for name in PHOTOGRAPHERS
     )
+    camera_breakdown = ", ".join(
+        f"{name}={count}" for name, count in sorted(by_camera.items())
+    ) or "none"
     print(
         f"\nWrote {out_path} ({size_mb:.2f} MB) in {elapsed:.1f}s\n"
         f"  items={len(items)}  with_thumbnail={with_thumb}  "
         f"with_dims={with_dims}  with_taken={with_taken}  "
         f"with_phash={with_phash}\n"
         f"  with_description={with_desc}  with_photographer={with_photog} "
-        f"({photog_breakdown})"
+        f"({photog_breakdown})\n"
+        f"  with_camera={with_camera} ({camera_breakdown})"
     )
 
     if args.jsonp and not args.no_jsonp:

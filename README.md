@@ -5,9 +5,10 @@
 A static HTML viewer for the NASA EOL Artemis II image set, plus a Python
 script that builds the metadata manifest the viewer reads.
 
-Packaged release with photos and the gallery files:
+Packaged release with photos, thumbnails, and the gallery files. Updated from
+the archive.org zip that has the more complete set of 12,200 photos.
 
-https://file.kiwi/8a3be2ba#4iLKFDWNTz-KWYQIArEYyw
+https://file.kiwi/ec68ac0c#xnCe2sXyf8yDk2U1QmupjA
 
 ## `make_thumbnails.py`
 
@@ -51,12 +52,7 @@ Open directly in a browser — no web server needed; `photos.js` loads via a
 
 ## Photos and thumbnails (download separately)
 
-Download the ZIP, extract it into the same folder as gallery.html, and the tool will work immediately as the output of build_manifest on this photo set is already included. No need to run any python scripts to get it to work.
-
-Photos and Thumbnails only ZIP: https://file.kiwi/086c80d6#wDLd0yM4tVLGpu-vjik23Q
-
-This download may expire or become invalid soon. Hopefully someone hosts a
-torrent I can link here instead.
+Zip file including the photos, thumbnails, and gallery data linked at the top.
 
 `./photos/` and `./thumbnails/` are gitignored (the originals are ~several
 GB) and **must be populated yourself** before `build_manifest.py` will have
