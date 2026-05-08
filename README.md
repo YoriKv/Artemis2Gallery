@@ -9,6 +9,7 @@ Packaged release with photos, thumbnails, and the gallery files. Updated from
 the archive.org zip that has the more complete set of 12,200 photos.
 
 Direct (may expire): https://file.kiwi/1b5c92be#rp8jgKGLarl-MklAe7DHNw
+
 Torrent: https://github.com/YoriKv/Artemis2Gallery/raw/refs/heads/main/Artemis2PhotoGallery.zip.torrent
 
 ## Demo Video
